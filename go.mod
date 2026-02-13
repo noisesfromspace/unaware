@@ -13,7 +13,7 @@ require (
 	github.com/schollz/progressbar/v3 v3.19.0
 	github.com/stretchr/testify v1.11.1
 	github.com/theplant/luhn v0.0.0-20170224032821-81a1a381387a
-	golang.org/x/text v0.32.0
+	golang.org/x/text v0.34.0
 )
 
 require (
