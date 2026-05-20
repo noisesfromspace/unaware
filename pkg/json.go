@@ -182,12 +182,15 @@ func (jp *jsonProcessor) recursiveMask(m *masker, key string, data any) any {
 	case json.Number:
 		if shouldMask(key, jp.config.IncludeGlobs, jp.config.ExcludeGlobs) {
 			s := v.String()
+			var masked any
 			if strings.Contains(s, ".") {
 				parts := strings.Split(s, ".")
 				template := strings.Repeat("#", len(parts[0])) + "." + strings.Repeat("#", len(parts[1]))
-				return json.Number(m.faker.Numerify(template))
+				masked = json.Number(m.faker.Numerify(template))
+			} else {
+				masked = json.Number(m.faker.Numerify(strings.Repeat("#", len(s))))
 			}
-			return json.Number(m.faker.Numerify(strings.Repeat("#", len(s))))
+			return m.maybePrefixMasked(masked)
 		}
 		return v
 	case string, bool, nil:

@@ -86,8 +86,8 @@ func TestFilteringScenarios(t *testing.T) {
 			expected: []string{
 				`"id": "user-123"`,
 				`"ip_address": "203.0.113.195"`,
-				`"name": "Cute His"`,
-				`"transaction_id": "without"`,
+				`"name": "mask-Cute His"`,
+				`"transaction_id": "mask-without"`,
 			},
 		},
 		{
@@ -109,7 +109,7 @@ func TestFilteringScenarios(t *testing.T) {
 			exclude: []string{"user.id", "user.metadata.last_login"},
 			expected: []string{
 				`"id": "user-123"`,
-				`"name": "Cute His"`,
+				`"name": "mask-Cute His"`,
 				`"last_login": "2023-10-27T10:00:00Z"`,
 				`"transaction_id": "txn-abc-456"`,
 			},
@@ -135,7 +135,7 @@ func TestFilteringScenarios(t *testing.T) {
 			expected: []string{
 				`<user id="user-xyz">`, // Not masked
 				`<name>Jane Doe</name>`,
-				`<email>alfredofritsch@dickinson.net</email>`,
+				`<email>mask-alfredofritsch@dickinson.net</email>`,
 			},
 		},
 		{
@@ -157,7 +157,7 @@ func TestFilteringScenarios(t *testing.T) {
 			exclude: []string{"root.user.id", "root.user.metadata.ip_address"},
 			expected: []string{
 				`<user id="user-xyz">`,
-				`<name>Finally His</name>`,
+				`<name>mask-Finally His</name>`,
 				`<ip_address>198.51.100.22</ip_address>`,
 				`<transaction_id>txn-def-789</transaction_id>`,
 			},

@@ -55,8 +55,9 @@ const (
 
 // MaskerConfig holds all the configuration for a masker.
 type MaskerConfig struct {
-	Method MaskingMethod
-	Salt   []byte // Only used for deterministic method
+	Method       MaskingMethod
+	Salt         []byte // Only used for deterministic method
+	PrefixMasked bool
 }
 
 // Start initiates the masking process based on the provided configuration.
@@ -77,6 +78,8 @@ func Start(r io.Reader, w io.Writer, config AppConfig) error {
 		}
 		config.ExcludeGlobs = append(config.ExcludeGlobs, g)
 	}
+
+	config.Masker.PrefixMasked = len(config.Exclude) > 0
 
 	var p processor
 	switch config.Format {
@@ -179,6 +182,7 @@ type masker struct {
 	faker           *gofakeit.Faker
 	seeder          seeder
 	cache           *ristretto.Cache
+	prefixMasked    bool
 	dateLayouts     []string
 	emailRegex      *regexp.Regexp
 	numLikeRegex    *regexp.Regexp
@@ -228,6 +232,8 @@ func newMasker(config MaskerConfig) *masker {
 		panic("unknown masking method") // Should not happen with validation
 	}
 
+	m.prefixMasked = config.PrefixMasked
+
 	return m
 }
 
@@ -244,7 +250,7 @@ func (m *masker) mask(value any) any {
 		}
 	}
 
-	maskedValue := m.maskUncached(value)
+	maskedValue := m.maybePrefixMasked(m.maskUncached(value))
 
 	if m.cache != nil {
 		cacheKey := m.getCacheKey(value)
@@ -252,6 +258,21 @@ func (m *masker) mask(value any) any {
 	}
 
 	return maskedValue
+}
+
+func (m *masker) maybePrefixMasked(masked any) any {
+	if !m.prefixMasked || masked == nil {
+		return masked
+	}
+	switch v := masked.(type) {
+	case string:
+		if strings.HasPrefix(v, "mask-") {
+			return v
+		}
+		return "mask-" + v
+	default:
+		return "mask-" + fmt.Sprintf("%v", masked)
+	}
 }
 
 func (m *masker) getCacheKey(value any) string {
