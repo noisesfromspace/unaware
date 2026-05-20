@@ -14,7 +14,7 @@ Build the program from source:
 go build -o unaware main.go
 ```
 
-Alternatively, check the releases page for pre-built binaries.
+Alternatively, check the releases folder for pre-built binaries.
 
 ### Usage
 
