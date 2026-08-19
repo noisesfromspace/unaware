@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 )
 
@@ -247,6 +248,7 @@ func (xp *xmlProcessor) processSerially(decoder *xml.Decoder, w io.Writer) error
 	encoder.Indent("", "  ")
 	serialMasker := newMasker(xp.config.Masker)
 	var path []string
+	var attrSegs [][]string
 	for {
 		token, err := decoder.Token()
 		if err == io.EOF {
@@ -258,6 +260,12 @@ func (xp *xmlProcessor) processSerially(decoder *xml.Decoder, w io.Writer) error
 		switch se := token.(type) {
 		case xml.StartElement:
 			path = append(path, se.Name.Local)
+			segs := make([]string, 0, len(se.Attr))
+			for _, attr := range se.Attr {
+				segs = append(segs, attr.Name.Local+"="+attr.Value)
+			}
+			sort.Strings(segs)
+			attrSegs = append(attrSegs, segs)
 			startElem := se.Copy()
 			for i := range startElem.Attr {
 				attr := &startElem.Attr[i]
@@ -274,7 +282,7 @@ func (xp *xmlProcessor) processSerially(decoder *xml.Decoder, w io.Writer) error
 			trimmedData := strings.TrimSpace(string(se))
 			if len(trimmedData) > 0 {
 				fullKey := strings.Join(path, ".")
-				if shouldMask(fullKey, xp.config.IncludeGlobs, xp.config.ExcludeGlobs) {
+				if shouldMaskAny([]string{fullKey, xmlPathWithAttrs(path, attrSegs)}, xp.config.IncludeGlobs, xp.config.ExcludeGlobs) {
 					maskedValue := serialMasker.mask(trimmedData)
 					maskedString := fmt.Sprintf("%v", maskedValue)
 					if err := encoder.EncodeToken(xml.CharData(maskedString)); err != nil {
@@ -293,6 +301,7 @@ func (xp *xmlProcessor) processSerially(decoder *xml.Decoder, w io.Writer) error
 		case xml.EndElement:
 			if len(path) > 0 {
 				path = path[:len(path)-1]
+				attrSegs = attrSegs[:len(attrSegs)-1]
 			}
 			if err := encoder.EncodeToken(token); err != nil {
 				return err
@@ -304,4 +313,20 @@ func (xp *xmlProcessor) processSerially(decoder *xml.Decoder, w io.Writer) error
 		}
 	}
 	return encoder.Flush()
+}
+
+// xmlPathWithAttrs builds a key where each element's attributes are appended as
+// "attrName=attrValue" segments after the element name. For example, the element
+// <field name="Body"> nested as Message/field/value yields
+// "Message.field.name=Body.value". This lets glob patterns match on attribute
+// values, not just element names.
+func xmlPathWithAttrs(path []string, attrSegs [][]string) string {
+	parts := make([]string, 0, len(path)*2)
+	for i, name := range path {
+		parts = append(parts, name)
+		if i < len(attrSegs) {
+			parts = append(parts, attrSegs[i]...)
+		}
+	}
+	return strings.Join(parts, ".")
 }

@@ -2,7 +2,9 @@ package pkg
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -90,24 +92,34 @@ func (cr *concurrentRunner) worker(wg *sync.WaitGroup, jobs <-chan job, results 
 	defer wg.Done()
 	workerMasker := cr.methodFactory()
 	for j := range jobs {
-		results <- result{index: j.index, data: cr.recursiveMask(workerMasker, cr.Root, j.data)}
+		results <- result{index: j.index, data: cr.recursiveMask(workerMasker, cr.Root, cr.Root, j.data)}
 	}
 }
 
-func (cr *concurrentRunner) recursiveMask(m *masker, key string, data any) any {
+func (cr *concurrentRunner) recursiveMask(m *masker, key, enrichedKey string, data any) any {
 	switch v := data.(type) {
 	case json.Number, string, bool, nil:
-		if shouldMask(key, cr.config.IncludeGlobs, cr.config.ExcludeGlobs) {
+		if shouldMaskAny([]string{key, enrichedKey}, cr.config.IncludeGlobs, cr.config.ExcludeGlobs) {
 			return m.mask(v)
 		}
 		return v
 	case map[string]any:
+		// Attributes from the XML decoder are prefixed with '-'. Collect them as
+		// "attrName=attrValue" segments so globs can match on attribute values.
+		var attrSegs []string
+		for k, val := range v {
+			if name, ok := strings.CutPrefix(k, "-"); ok {
+				attrSegs = append(attrSegs, name+"="+fmt.Sprintf("%v", val))
+			}
+		}
+		sort.Strings(attrSegs)
+		attrJoin := strings.Join(attrSegs, ".")
 		maskedMap := make(map[string]any, len(v))
 		for k, value := range v {
 			if k == "#text" {
 				// This is the text content of the parent element (e.g., the "2002" in <year>2002</year>).
 				// The key for filtering is the parent's key, which is already in the 'key' variable.
-				if shouldMask(key, cr.config.IncludeGlobs, cr.config.ExcludeGlobs) {
+				if shouldMaskAny([]string{key, enrichedKey}, cr.config.IncludeGlobs, cr.config.ExcludeGlobs) {
 					maskedMap[k] = m.mask(value)
 				} else {
 					maskedMap[k] = value
@@ -115,23 +127,31 @@ func (cr *concurrentRunner) recursiveMask(m *masker, key string, data any) any {
 			} else {
 				// This is a nested element or an attribute.
 				// Attributes from the XML decoder are prefixed with '-'.
+				isAttr := strings.HasPrefix(k, "-")
 				nestedKey := strings.TrimPrefix(k, "-")
 				fullKey := nestedKey
+				enrichedFullKey := nestedKey
 				if key != "" {
 					fullKey = key + "." + nestedKey
 				}
-				maskedMap[k] = cr.recursiveMask(m, fullKey, value)
+				if enrichedKey != "" {
+					enrichedFullKey = enrichedKey + "." + nestedKey
+					if !isAttr && attrJoin != "" {
+						enrichedFullKey = enrichedKey + "." + attrJoin + "." + nestedKey
+					}
+				}
+				maskedMap[k] = cr.recursiveMask(m, fullKey, enrichedFullKey, value)
 			}
 		}
 		return maskedMap
 	case []any:
 		maskedSlice := make([]any, len(v))
 		for i, value := range v {
-			maskedSlice[i] = cr.recursiveMask(m, key, value)
+			maskedSlice[i] = cr.recursiveMask(m, key, enrichedKey, value)
 		}
 		return maskedSlice
 	default:
-		if shouldMask(key, cr.config.IncludeGlobs, cr.config.ExcludeGlobs) {
+		if shouldMaskAny([]string{key, enrichedKey}, cr.config.IncludeGlobs, cr.config.ExcludeGlobs) {
 			return m.mask(v)
 		}
 		return v

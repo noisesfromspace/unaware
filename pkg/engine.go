@@ -99,20 +99,28 @@ func Start(r io.Reader, w io.Writer, config AppConfig) error {
 }
 
 func shouldMask(key string, include, exclude []glob.Glob) bool {
-	if len(exclude) > 0 {
-		for _, g := range exclude {
-			if g.Match(key) {
-				return false
-			}
-		}
-	}
-	if len(include) > 0 {
-		for _, g := range include {
-			if g.Match(key) {
-				return true
+	return shouldMaskAny([]string{key}, include, exclude)
+}
+
+// shouldMaskAny is like shouldMask but tests a field against multiple candidate
+// keys. A value is masked if any key matches an include pattern (or no include
+// patterns are set) and no key matches an exclude pattern. Exclude always wins.
+func shouldMaskAny(keys []string, include, exclude []glob.Glob) bool {
+	matches := func(globs []glob.Glob) bool {
+		for _, k := range keys {
+			for _, g := range globs {
+				if g.Match(k) {
+					return true
+				}
 			}
 		}
 		return false
+	}
+	if len(exclude) > 0 && matches(exclude) {
+		return false
+	}
+	if len(include) > 0 {
+		return matches(include)
 	}
 	return true
 }
